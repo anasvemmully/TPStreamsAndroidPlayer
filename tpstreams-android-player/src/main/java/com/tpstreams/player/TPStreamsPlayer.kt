@@ -1,7 +1,11 @@
 package com.tpstreams.player
 
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.media.MediaCodec
+import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -13,6 +17,10 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,7 +55,10 @@ private constructor(
     val enableDownload: Boolean = false,
     private val showDefaultCaptions: Boolean = false,
     val downloadMetadata: Map<String, String>? = null,
-    val offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS
+    val offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS,
+    val playInBackground: Boolean = false,
+    val enableNotification: Boolean = false,
+    val notificationMetadata: NotificationMetadata? = null
 ) : Player by exoPlayer {
 
     interface Listener {
@@ -58,8 +69,12 @@ private constructor(
     private var requestedPlay = false
     private var hasSeekedToStartAt = false
     private var subtitleMetadata = mapOf<String, Boolean>()
-    
+
     private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // MediaSession/Controller for notification support
+    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
 
     private var _listener: Listener? = null
     var listener: Listener?
@@ -73,7 +88,12 @@ private constructor(
 
     init {
         Log.d("TPStreamsPlayer", "Initializing TPStreamsPlayer with assetId: $assetId")
-        
+
+        // Initialize notification and background playback if enabled
+        if (enableNotification) {
+            initializeMediaSession()
+        }
+
         exoPlayer.addListener(object : Player.Listener {
             @OptIn(UnstableApi::class)
             override fun onTracksChanged(tracks: Tracks) {
@@ -126,6 +146,55 @@ private constructor(
         val defaultTrack = textTracks.firstOrNull()
         defaultTrack?.let {
             setTextTrackByLanguage(it.first)
+        }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun initializeMediaSession() {
+        Log.d("TPStreamsPlayer", "Initializing MediaSession for background playback and notifications")
+
+        try {
+            // Set the player instance in the service
+            TPSPlaybackService.currentPlayer = exoPlayer
+
+            // Create a PendingIntent for when the user taps the notification
+            // This will bring the app to the foreground
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            TPSPlaybackService.sessionActivityIntent = PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                pendingIntentFlags
+            )
+
+            // Start the service
+            val serviceIntent = Intent(context, TPSPlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+
+            // Connect to the MediaController
+            val sessionToken = SessionToken(context, ComponentName(context, TPSPlaybackService::class.java))
+            mediaControllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+
+            mediaControllerFuture?.addListener({
+                try {
+                    mediaController = mediaControllerFuture?.get()
+                    Log.d("TPStreamsPlayer", "MediaController connected successfully")
+                } catch (e: Exception) {
+                    Log.e("TPStreamsPlayer", "Error connecting to MediaController", e)
+                }
+            }, MoreExecutors.directExecutor())
+
+        } catch (e: Exception) {
+            Log.e("TPStreamsPlayer", "Error initializing MediaSession", e)
         }
     }
 
@@ -211,15 +280,25 @@ private constructor(
                 
                 setSubtitleMetadata(subtitleMetadata)
 
-                // Create the MediaItem builder 
+                // Create the MediaItem builder
                 val mediaItem = MediaItem.Builder()
                     .setUri(mediaUrl)
                     .setMediaId(assetId)
                     .apply {
-                        val metadata = MediaMetadata.Builder()
-                            .setTitle(title)
-                            .setArtworkUri(if (thumbnailUrl.isNotEmpty()) Uri.parse(thumbnailUrl) else null)
-                            .build()
+                        // Build MediaMetadata with custom notification metadata if provided
+                        val metadataBuilder = MediaMetadata.Builder()
+                            .setTitle(notificationMetadata?.title ?: title)
+                            .setArtworkUri(
+                                notificationMetadata?.artworkUri
+                                    ?: (if (thumbnailUrl.isNotEmpty()) Uri.parse(thumbnailUrl) else null)
+                            )
+
+                        // Add artist if provided
+                        notificationMetadata?.artist?.let { artist ->
+                            metadataBuilder.setArtist(artist)
+                        }
+
+                        val metadata = metadataBuilder.build()
                         setMediaMetadata(metadata)
                         
                         if (enableDrm) {
@@ -372,6 +451,23 @@ private constructor(
 
     override fun release() {
         playerScope.cancel()
+
+        // Release MediaController if notifications were enabled
+        mediaController?.release()
+        mediaControllerFuture?.let { future ->
+            MediaController.releaseFuture(future)
+        }
+
+        // Stop the playback service if it was started
+        if (enableNotification) {
+            try {
+                val serviceIntent = Intent(context, TPSPlaybackService::class.java)
+                context.stopService(serviceIntent)
+            } catch (e: Exception) {
+                Log.e("TPStreamsPlayer", "Error stopping playback service", e)
+            }
+        }
+
         exoPlayer.release()
     }
 
@@ -626,7 +722,10 @@ private constructor(
             enableDownload: Boolean = false,
             showDefaultCaptions: Boolean = false,
             downloadMetadata: Map<String, String>? = null,
-            offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS
+            offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS,
+            playInBackground: Boolean = false,
+            enableNotification: Boolean = false,
+            notificationMetadata: NotificationMetadata? = null
         ): TPStreamsPlayer {
             val (exo, trackSelector) = createExoPlayer(context)
             return TPStreamsPlayer(
@@ -640,7 +739,10 @@ private constructor(
                 enableDownload,
                 showDefaultCaptions,
                 downloadMetadata,
-                offlineLicenseExpireTime)
+                offlineLicenseExpireTime,
+                playInBackground,
+                enableNotification,
+                notificationMetadata)
         }
     }
 

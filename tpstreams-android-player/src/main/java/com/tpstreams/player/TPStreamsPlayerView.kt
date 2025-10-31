@@ -233,10 +233,14 @@ class TPStreamsPlayerView @JvmOverloads constructor(
         if (player == getPlayer()) return
         getPlayer()?.removeListener(playbackStateListener)
         super.setPlayer(player)
-        
-        lifecycleManager = player?.let { PlayerLifecycleManager(it) }
+
+        // Create lifecycle manager with playInBackground flag from TPStreamsPlayer
+        lifecycleManager = player?.let {
+            val playInBackground = (it as? TPStreamsPlayer)?.playInBackground ?: false
+            PlayerLifecycleManager(it, playInBackground)
+        }
         registerWithLifecycle()
-        
+
         player?.addListener(playbackStateListener)
         
         if (player is TPStreamsPlayer) {
