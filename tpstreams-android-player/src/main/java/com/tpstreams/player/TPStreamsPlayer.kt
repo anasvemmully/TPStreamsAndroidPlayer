@@ -412,6 +412,23 @@ private constructor(
     }
 
     private fun updateMetadata() {
+        // Update ExoPlayer's MediaMetadata
+        val currentMediaItem = exoPlayer.currentMediaItem
+        if (currentMediaItem != null) {
+            val currentMetadata = currentMediaItem.mediaMetadata
+            val updatedMetadata = currentMetadata.buildUpon()
+                .setTitle(videoTitle)
+                .setArtist(videoArtist)
+                .build()
+
+            val updatedMediaItem = currentMediaItem.buildUpon()
+                .setMediaMetadata(updatedMetadata)
+                .build()
+
+            exoPlayer.replaceMediaItem(exoPlayer.currentMediaItemIndex, updatedMediaItem)
+        }
+
+        // Update background playback service notification
         if (enableBackgroundPlayback) {
             serviceConnection?.updateMetadata(this, videoTitle, videoArtist)
         }
