@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.tpstreams.player.HomeFragment"
+        android:label="Home">
+        <action
+            android:id="@+id/action_home_to_normalPlayer"
+            app:destination="@id/normalPlayerFragment" />
+        <action
+            android:id="@+id/action_home_to_backgroundPlayer"
+            app:destination="@id/backgroundPlayerFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/normalPlayerFragment"
+        android:name="com.tpstreams.player.NormalPlayerFragment"
+        android:label="Normal Player" />
+
+    <fragment
+        android:id="@+id/backgroundPlayerFragment"
+        android:name="com.tpstreams.player.BackgroundPlayerFragment"
+        android:label="Background Player" />
+
+</navigation>

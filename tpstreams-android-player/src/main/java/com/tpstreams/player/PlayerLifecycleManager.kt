@@ -9,7 +9,10 @@ import androidx.media3.common.Player
  * Manages player lifecycle events to ensure proper playback state during
  * app backgrounding, orientation changes, and other lifecycle transitions.
  */
-class PlayerLifecycleManager(private val player: Player?) : DefaultLifecycleObserver {
+class PlayerLifecycleManager(
+    private val player: Player?,
+    private val enableBackgroundPlayback: Boolean = false
+) : DefaultLifecycleObserver {
     
     private var userPausedPlayback = true  // Default to paused to prevent auto-play
     private var wasPlayingBeforePause = false
@@ -71,11 +74,11 @@ class PlayerLifecycleManager(private val player: Player?) : DefaultLifecycleObse
     }
     
     override fun onStop(owner: LifecycleOwner) {
-        // Skip handling if we're in a transition
-        if (isInTransition) {
+        // Skip handling if we're in a transition or background playback is enabled
+        if (isInTransition || enableBackgroundPlayback) {
             return
         }
-        
+
         isAppInForeground = false
         Log.d(tag, "Lifecycle onStop")
         // Always pause on stop (includes app switching via recents button)
@@ -88,22 +91,22 @@ class PlayerLifecycleManager(private val player: Player?) : DefaultLifecycleObse
     }
     
     override fun onPause(owner: LifecycleOwner) {
-        // Skip handling if we're in a transition
-        if (isInTransition) {
+        // Skip handling if we're in a transition or background playback is enabled
+        if (isInTransition || enableBackgroundPlayback) {
             return
         }
-        
+
         Log.d(tag, "Lifecycle onPause")
         // Record if the player was playing before pausing
         if (player != null) {
             lastPlaybackState = player.isPlaying
-            
-            // Only record true user pause if app is in foreground 
+
+            // Only record true user pause if app is in foreground
             // (otherwise it's system-initiated pause)
             if (isAppInForeground && !player.isPlaying) {
                 userPausedPlayback = true
             }
-            
+
             // Always pause on lifecycle pause
             if (player.isPlaying) {
                 wasPlayingBeforePause = true

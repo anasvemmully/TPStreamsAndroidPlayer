@@ -28,6 +28,7 @@ class PlayerSettingsBottomSheet : BottomSheetDialogFragment() {
         fun getCurrentDownloadStatus(): String
         fun getDownloadIcon(): Int
         fun isDownloadEnabled(): Boolean
+        fun isCaptionDisabled(): Boolean
     }
 
     private var listener: SettingsListener? = null
@@ -66,29 +67,30 @@ class PlayerSettingsBottomSheet : BottomSheetDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
+
         val qualityItem = view.findViewById<LinearLayout>(R.id.quality_item)
         val captionsItem = view.findViewById<LinearLayout>(R.id.captions_item)
         val playbackSpeedItem = view.findViewById<LinearLayout>(R.id.playback_speed_item)
         val downloadItem = view.findViewById<LinearLayout>(R.id.download_item)
-        
+
         val qualityValue = view.findViewById<TextView>(R.id.quality_value)
         val captionsValue = view.findViewById<TextView>(R.id.captions_value)
         val playbackSpeedValue = view.findViewById<TextView>(R.id.playback_speed_value)
         val downloadIcon = view.findViewById<ImageView>(R.id.download_icon)
         val downloadText = view.findViewById<TextView>(R.id.download_text)
-        
+
         // Update values from listener
         listener?.let { listener ->
             qualityValue.text = listener.getCurrentQuality()
             captionsValue.text = listener.getCurrentCaptionStatus()
             playbackSpeedValue.text = getString(R.string.playback_speed_format, listener.getPlaybackSpeed())
-            
+
             // Update download text and icon based on download status
             downloadText.text = listener.getCurrentDownloadStatus()
             downloadIcon.setImageResource(listener.getDownloadIcon())
-            
+
             downloadItem.visibility = if (listener.isDownloadEnabled()) View.VISIBLE else View.GONE
+            captionsItem.visibility = if (listener.isCaptionDisabled()) View.GONE else View.VISIBLE
         }
         
         // Set click listeners

@@ -47,7 +47,11 @@ private constructor(
     val enableDownload: Boolean = false,
     private val showDefaultCaptions: Boolean = false,
     val downloadMetadata: Map<String, String>? = null,
-    val offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS
+    val offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS,
+    val enableBackgroundPlayback: Boolean = false,
+    val disableCaption: Boolean = false,
+    private val customTitle: String? = null,
+    private val customArtist: String? = null
 ) : Player by exoPlayer {
 
     interface Listener {
@@ -58,8 +62,12 @@ private constructor(
     private var requestedPlay = false
     private var hasSeekedToStartAt = false
     private var subtitleMetadata = mapOf<String, Boolean>()
-    
+
     private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var serviceConnection: com.tpstreams.player.playback.PlaybackServiceConnection? = null
+
+    private var videoTitle: String = customTitle ?: ""
+    private var videoArtist: String = customArtist ?: ""
 
     private var _listener: Listener? = null
     var listener: Listener?
@@ -80,7 +88,8 @@ private constructor(
                 val textTracks = getAvailableTextTracks()
                 Log.d("TPStreamsPlayer", "Tracks changed. Text tracks available: ${textTracks.size}")
                 
-                if (showDefaultCaptions && isPrepared && textTracks.isNotEmpty()) {
+                // disableCaption takes precedence over showDefaultCaptions
+                if (!disableCaption && showDefaultCaptions && isPrepared && textTracks.isNotEmpty()) {
                     enableDefaultCaptions()
                 }
             }
@@ -119,6 +128,12 @@ private constructor(
         val org = organizationId
             ?: throw IllegalStateException("TPStreamsPlayer.init(organizationId) must be called before using the player.")
         fetchAndPrepare(org, assetId, accessToken)
+
+        // Register with background playback service if enabled
+        if (enableBackgroundPlayback) {
+            serviceConnection = com.tpstreams.player.playback.PlaybackServiceConnection(context)
+            serviceConnection?.registerPlayer(this)
+        }
     }
 
     private fun enableDefaultCaptions() {
@@ -216,9 +231,19 @@ private constructor(
                     .setUri(mediaUrl)
                     .setMediaId(assetId)
                     .apply {
+                        // Update video title and artist for notification
+                        if (videoTitle.isEmpty()) videoTitle = title
+                        if (videoArtist.isEmpty()) videoArtist = "TPStreams"
+
+                        val artworkUri = when {
+                            thumbnailUrl.isNotEmpty() -> Uri.parse(thumbnailUrl)
+                            else -> Uri.parse("android.resource://${context.packageName}/${R.drawable.ic_default_artwork}")
+                        }
+
                         val metadata = MediaMetadata.Builder()
                             .setTitle(title)
-                            .setArtworkUri(if (thumbnailUrl.isNotEmpty()) Uri.parse(thumbnailUrl) else null)
+                            .setArtist(videoArtist)
+                            .setArtworkUri(artworkUri)
                             .build()
                         setMediaMetadata(metadata)
                         
@@ -370,7 +395,34 @@ private constructor(
      */
     override fun getPlaybackState(): Int = exoPlayer.playbackState
 
+    /**
+     * Sets the title for the media notification
+     */
+    fun setTitle(title: String) {
+        videoTitle = title
+        updateMetadata()
+    }
+
+    /**
+     * Sets the artist/subtitle for the media notification
+     */
+    fun setArtist(artist: String) {
+        videoArtist = artist
+        updateMetadata()
+    }
+
+    private fun updateMetadata() {
+        if (enableBackgroundPlayback) {
+            serviceConnection?.updateMetadata(this, videoTitle, videoArtist)
+        }
+    }
+
     override fun release() {
+        // Unregister from background playback service if enabled
+        if (enableBackgroundPlayback) {
+            serviceConnection?.unregisterPlayer(this)
+            serviceConnection = null
+        }
         playerScope.cancel()
         exoPlayer.release()
     }
@@ -588,7 +640,7 @@ private constructor(
         private const val LICENSE_URL_TEMPLATE = "https://app.tpstreams.com/api/v1/%s/assets/%s/drm_license/?access_token=%s&download=%s&license_duration_seconds=%s"
 
 
-        internal fun init(orgId: String) {
+        fun init(orgId: String) {
             organizationId = orgId
         }
 
@@ -626,7 +678,11 @@ private constructor(
             enableDownload: Boolean = false,
             showDefaultCaptions: Boolean = false,
             downloadMetadata: Map<String, String>? = null,
-            offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS
+            offlineLicenseExpireTime: Long = DownloadConstants.FIFTEEN_DAYS_IN_SECONDS,
+            enableBackgroundPlayback: Boolean = false,
+            disableCaption: Boolean = false,
+            customTitle: String? = null,
+            customArtist: String? = null
         ): TPStreamsPlayer {
             val (exo, trackSelector) = createExoPlayer(context)
             return TPStreamsPlayer(
@@ -640,7 +696,11 @@ private constructor(
                 enableDownload,
                 showDefaultCaptions,
                 downloadMetadata,
-                offlineLicenseExpireTime)
+                offlineLicenseExpireTime,
+                enableBackgroundPlayback,
+                disableCaption,
+                customTitle,
+                customArtist)
         }
     }
 

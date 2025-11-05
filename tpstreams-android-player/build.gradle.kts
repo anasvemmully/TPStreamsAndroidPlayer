@@ -41,8 +41,11 @@ dependencies {
     api(libs.androidx.media3.exoplayer.dash)
     api(libs.androidx.media3.exoplayer.hls)
     api(libs.androidx.media3.ui)
+    api(libs.androidx.media3.session)
+    api(libs.androidx.media)
     implementation(libs.kotlinx.coroutines.android)
     api(libs.okhttp)
+    implementation(libs.coil)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

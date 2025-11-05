@@ -26,7 +26,7 @@ class TPStreamsPlayerView @JvmOverloads constructor(
     private val fullscreenMode = FullscreenMode(this)
     private val downloadActions = DownloadActions(this)
     private val settingsPanel = SettingsPanel(this)
-    private val captions = Captions(this)
+    private var captions: Captions? = null
     private val contextAccess = ContextAccess(this)
     
     private var playerControlView: TPStreamsPlayerControlView? = null
@@ -72,7 +72,7 @@ class TPStreamsPlayerView @JvmOverloads constructor(
     val captionsBottomSheet: CaptionsBottomSheet by lazy {
         CaptionsBottomSheet().apply {
             setCaptionsOptionsListener(this@TPStreamsPlayerView)
-            setCurrentLanguage(captions.getCurrentCaptionLanguage())
+            setCurrentLanguage(captions?.getCurrentCaptionLanguage() ?: "")
         }
     }
     
@@ -233,27 +233,42 @@ class TPStreamsPlayerView @JvmOverloads constructor(
         if (player == getPlayer()) return
         getPlayer()?.removeListener(playbackStateListener)
         super.setPlayer(player)
-        
-        lifecycleManager = player?.let { PlayerLifecycleManager(it) }
-        registerWithLifecycle()
-        
-        player?.addListener(playbackStateListener)
-        
+
+        // Force controller to show and update enabled state
+        playerControlView?.show()
+        Log.d(TAG, "Player set: ${player != null}, playWhenReady: ${player?.playWhenReady}, state: ${player?.playbackState}")
+
         if (player is TPStreamsPlayer) {
+            // Initialize captions only if not disabled
+            if (!player.disableCaption) {
+                captions = Captions(this)
+            } else {
+                captions = null
+            }
+
+            lifecycleManager = PlayerLifecycleManager(player, player.enableBackgroundPlayback)
+            registerWithLifecycle()
+
+            player.addListener(playbackStateListener)
+
             player.addListener(object : Player.Listener {
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     settingsPanel.updateAvailableResolutions()
-                    captions.updateAvailableCaptions()
+                    captions?.updateAvailableCaptions()
                 }
-                
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
-                        captions.updateAvailableCaptions()
+                        captions?.updateAvailableCaptions()
                     }
                 }
             })
-            
-            captions.updateAvailableCaptions()
+
+            captions?.updateAvailableCaptions()
+        } else {
+            lifecycleManager = player?.let { PlayerLifecycleManager(it) }
+            registerWithLifecycle()
+            player?.addListener(playbackStateListener)
         }
     }
 
@@ -266,15 +281,16 @@ class TPStreamsPlayerView @JvmOverloads constructor(
 
     // Implementation of PlayerSettingsBottomSheet.SettingsListener
     override fun onQualitySelected() = settingsPanel.showQualityOptionsBottomSheet()
-    override fun onCaptionsSelected() = captions.showCaptionsBottomSheet()
+    override fun onCaptionsSelected() { captions?.showCaptionsBottomSheet() }
     override fun onPlaybackSpeedSelected() = settingsPanel.showPlaybackSpeedBottomSheet()
     override fun onDownloadSelected() = downloadActions.onDownloadSelected()
     override fun getCurrentQuality() = settingsPanel.getCurrentQuality()
-    override fun getCurrentCaptionStatus() = captions.getCurrentCaptionStatus()
+    override fun getCurrentCaptionStatus() = captions?.getCurrentCaptionStatus() ?: "Off"
     override fun getPlaybackSpeed() = settingsPanel.getPlaybackSpeed()
     override fun getCurrentDownloadStatus() = downloadActions.getCurrentDownloadStatus()
     override fun getDownloadIcon() = downloadActions.getDownloadIcon()
     override fun isDownloadEnabled() = settingsPanel.isDownloadEnabled()
+    override fun isCaptionDisabled() = (getPlayer() as? TPStreamsPlayer)?.disableCaption ?: false
 
     // Implementation of QualityOptionsBottomSheet.QualityOptionsListener
     override fun onAutoQualitySelected() = settingsPanel.onAutoQualitySelected()
@@ -289,9 +305,9 @@ class TPStreamsPlayerView @JvmOverloads constructor(
     override fun onSpeedSelected(speed: Float) = settingsPanel.onSpeedSelected(speed)
 
     // Implementation of CaptionsBottomSheet.CaptionsOptionsListener
-    override fun onCaptionsDisabled() = captions.onCaptionsDisabled()
-    override fun onCaptionLanguageSelected(language: String) = captions.onCaptionLanguageSelected(language)
-    override fun getCurrentCaptionLanguage() = captions.getCurrentCaptionLanguage()
+    override fun onCaptionsDisabled() { captions?.onCaptionsDisabled() }
+    override fun onCaptionLanguageSelected(language: String) { captions?.onCaptionLanguageSelected(language) }
+    override fun getCurrentCaptionLanguage() = captions?.getCurrentCaptionLanguage() ?: ""
 
     // Implementation of DownloadOptionsBottomSheet.DownloadSelectionListener
     override fun onDownloadResolutionSelected(resolution: String) = downloadActions.onDownloadResolutionSelected(resolution)
