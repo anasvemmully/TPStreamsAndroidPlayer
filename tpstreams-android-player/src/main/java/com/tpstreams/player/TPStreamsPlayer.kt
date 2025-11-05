@@ -241,7 +241,7 @@ private constructor(
                         }
 
                         val metadata = MediaMetadata.Builder()
-                            .setTitle(title)
+                            .setTitle(videoTitle)
                             .setArtist(videoArtist)
                             .setArtworkUri(artworkUri)
                             .build()

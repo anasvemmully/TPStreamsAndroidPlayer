@@ -21,8 +21,8 @@ class BackgroundPlayerViewModel(application: Application) : AndroidViewModel(app
             enableDownload = true,
             enableBackgroundPlayback = true,
             disableCaption = true,
-            customTitle = "Background Playback Demo",
-            customArtist = "TPStreams SDK"
+            customTitle = "Title Example",
+            customArtist = "Hooman"
         )
     }
 
