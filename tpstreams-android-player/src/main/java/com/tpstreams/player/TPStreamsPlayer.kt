@@ -80,8 +80,16 @@ private constructor(
         }
 
     init {
-        Log.d("TPStreamsPlayer", "Initializing TPStreamsPlayer with assetId: $assetId")
-        
+        Log.d("TPStreamsPlayer", "========================================")
+        Log.d("TPStreamsPlayer", "Initializing TPStreamsPlayer")
+        Log.d("TPStreamsPlayer", "  assetId: $assetId")
+        Log.d("TPStreamsPlayer", "  customTitle: '$customTitle'")
+        Log.d("TPStreamsPlayer", "  customArtist: '$customArtist'")
+        Log.d("TPStreamsPlayer", "  videoTitle (initialized): '$videoTitle'")
+        Log.d("TPStreamsPlayer", "  videoArtist (initialized): '$videoArtist'")
+        Log.d("TPStreamsPlayer", "  enableBackgroundPlayback: $enableBackgroundPlayback")
+        Log.d("TPStreamsPlayer", "========================================")
+
         exoPlayer.addListener(object : Player.Listener {
             @OptIn(UnstableApi::class)
             override fun onTracksChanged(tracks: Tracks) {
@@ -131,8 +139,12 @@ private constructor(
 
         // Register with background playback service if enabled
         if (enableBackgroundPlayback) {
+            Log.d("TPStreamsPlayer", "Registering player with background playback service")
             serviceConnection = com.tpstreams.player.playback.PlaybackServiceConnection(context)
             serviceConnection?.registerPlayer(this)
+            Log.d("TPStreamsPlayer", "Background playback service registered")
+        } else {
+            Log.d("TPStreamsPlayer", "Background playback is disabled")
         }
     }
 
@@ -232,8 +244,10 @@ private constructor(
                     .setMediaId(assetId)
                     .apply {
                         // Update video title and artist for notification
-                        if (videoTitle.isEmpty()) videoTitle = title
-                        if (videoArtist.isEmpty()) videoArtist = "TPStreams"
+                        Log.d("TPStreamsPlayer", "Setting up MediaMetadata:")
+                        Log.d("TPStreamsPlayer", "  API title: '$title'")
+                        Log.d("TPStreamsPlayer", "  videoTitle: '$videoTitle'")
+                        Log.d("TPStreamsPlayer", "  videoArtist: '$videoArtist'")
 
                         val artworkUri = when {
                             thumbnailUrl.isNotEmpty() -> Uri.parse(thumbnailUrl)
@@ -245,6 +259,12 @@ private constructor(
                             .setArtist(videoArtist)
                             .setArtworkUri(artworkUri)
                             .build()
+
+                        Log.d("TPStreamsPlayer", "MediaMetadata built with:")
+                        Log.d("TPStreamsPlayer", "  title: '${metadata.title}'")
+                        Log.d("TPStreamsPlayer", "  artist: '${metadata.artist}'")
+                        Log.d("TPStreamsPlayer", "  artworkUri: ${metadata.artworkUri}")
+
                         setMediaMetadata(metadata)
                         
                         if (enableDrm) {
@@ -267,11 +287,17 @@ private constructor(
                     .build()
 
                 launch(Dispatchers.Main) {
+                    Log.d("TPStreamsPlayer", "Setting media item and preparing player")
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
                     isPrepared = true
 
+                    Log.d("TPStreamsPlayer", "Player prepared. Current mediaMetadata:")
+                    Log.d("TPStreamsPlayer", "  title: '${exoPlayer.mediaMetadata.title}'")
+                    Log.d("TPStreamsPlayer", "  artist: '${exoPlayer.mediaMetadata.artist}'")
+
                     if (shouldAutoPlay || requestedPlay) {
+                        Log.d("TPStreamsPlayer", "Auto-playing video")
                         exoPlayer.play()
                     }
                 }
@@ -399,6 +425,7 @@ private constructor(
      * Sets the title for the media notification
      */
     fun setTitle(title: String) {
+        Log.d("TPStreamsPlayer", "setTitle() called with: '$title' (current: '$videoTitle')")
         videoTitle = title
         updateMetadata()
     }
@@ -407,15 +434,26 @@ private constructor(
      * Sets the artist/subtitle for the media notification
      */
     fun setArtist(artist: String) {
+        Log.d("TPStreamsPlayer", "setArtist() called with: '$artist' (current: '$videoArtist')")
         videoArtist = artist
         updateMetadata()
     }
 
     private fun updateMetadata() {
+        Log.d("TPStreamsPlayer", "----------------------------------------")
+        Log.d("TPStreamsPlayer", "updateMetadata() called")
+        Log.d("TPStreamsPlayer", "  videoTitle: '$videoTitle'")
+        Log.d("TPStreamsPlayer", "  videoArtist: '$videoArtist'")
+        Log.d("TPStreamsPlayer", "  enableBackgroundPlayback: $enableBackgroundPlayback")
+
         // Update ExoPlayer's MediaMetadata
         val currentMediaItem = exoPlayer.currentMediaItem
         if (currentMediaItem != null) {
             val currentMetadata = currentMediaItem.mediaMetadata
+            Log.d("TPStreamsPlayer", "  Current ExoPlayer metadata:")
+            Log.d("TPStreamsPlayer", "    title: '${currentMetadata.title}'")
+            Log.d("TPStreamsPlayer", "    artist: '${currentMetadata.artist}'")
+
             val updatedMetadata = currentMetadata.buildUpon()
                 .setTitle(videoTitle)
                 .setArtist(videoArtist)
@@ -426,12 +464,22 @@ private constructor(
                 .build()
 
             exoPlayer.replaceMediaItem(exoPlayer.currentMediaItemIndex, updatedMediaItem)
+
+            Log.d("TPStreamsPlayer", "  Updated ExoPlayer metadata:")
+            Log.d("TPStreamsPlayer", "    title: '${updatedMetadata.title}'")
+            Log.d("TPStreamsPlayer", "    artist: '${updatedMetadata.artist}'")
+        } else {
+            Log.w("TPStreamsPlayer", "  Current media item is null, cannot update ExoPlayer metadata")
         }
 
         // Update background playback service notification
         if (enableBackgroundPlayback) {
+            Log.d("TPStreamsPlayer", "  Updating background playback service notification")
             serviceConnection?.updateMetadata(this, videoTitle, videoArtist)
+        } else {
+            Log.d("TPStreamsPlayer", "  Background playback disabled, skipping service update")
         }
+        Log.d("TPStreamsPlayer", "----------------------------------------")
     }
 
     override fun release() {
